@@ -288,7 +288,7 @@ After the POC of Livy was finished, I started to implement an Operator "Livy Spa
 	\subsection{Requirements}
 	In software engineering, code implementation is not the most difficult part, but understanding requirements. If the product cannot fulfill users' expectation, then it makes no sense no matter how many lines of code are written and how beautiful is the coding style. 
 	
-	However, requirements could change over time. Sometimes only after a requirement is implemented, people can find out it is useless or even wrong. Therefore, it is very important to keep communicating with people playing different roles. Although I am the only person writing code for this operator, there were always a weekly meeting, in which I, my tutor, the team leader, a security expert in Turkey and 3 technical consultants in the USA, shared the current development process, bugs, additional requirements and our opinions to the vision of this operator. Due to the length limit, I can't show all details we talked about. Let's simply see the final version of requirements for the operator "Livy Spark Submit":
+	However, requirements could change over time. Sometimes only after a requirement is implemented, people can find out it is useful, or useless, maybe even wrong. Therefore, it is very important to keep communicating with people playing different roles. Although I am the only person writing code for this operator, there were always a weekly meeting, in which I, my tutor, the team leader, a security expert in Turkey and 3 technical consultants in the USA, shared the current development process, bugs, additional requirements and our opinions to the vision of this operator. Due to the length limit, I can't show all details in the meetings, let's simply see the final version of requirements for the operator "Livy Spark Submit":
 	
 	\begin{itemize}
 		\item it works in SAP Data Hub Pipeline Modeler(vFlow);
@@ -305,12 +305,32 @@ After the POC of Livy was finished, I started to implement an Operator "Livy Spa
 	\end{itemize}
 	
 	\subsection{Implementation}
-	\textbf{TODO: REST API}
 	
-	\textbf{TODO: JSON}
+	Although there are so many requirements, actually the role of this operator is not so complex. It reads some configurations from the web UI, and then it sends requests to the Livy Server and retrieves status regularly, and in the end it posts success or failure information back to the web UI.
 	
+	As mentioned before, Livy provides a REST API for submitting jobs and retrieving job states and results. REST is an architecture style and it has 6 constraints(Server-Client mode, Stateless, Uniform Interface, Cache and Code-on-demand). In our case, we just need to know that Livy works in the Server-Client mode, the Livy server provides an uniform interface, so that a client could send requests according to the standard HTTP methods(e.g. GET, POST, DELETE) and the media type \textbf{application/json}, if everything runs properly, the client will get a HTTP response with JSON format as well.
 	
-	\subsection{Refactoring}
+	In short, we need to implement a HTTP client plus some special logics to fulfill our requirements. 
+	
+	Figure 3.1 shows a sketchy flowchart. First of all, the operator creates an object/instance in the backend and starts its constructor. The constructor reads configurations from the web UI(frontend) and binds them to the object's attributes, then the input and output channels, and a new initialized HTTP(S) client will also be bound to the object's attributes. If a security context is mentioned in the configuration, the operator must get authenticated before doing other things. Then the HTTP(s) client checks whether the Livy Server, which is described by a URL in configurations, works properly. After that, the operator submits a jar job or a sequence of code snippets according to the configurations, and keeps checking the job state from the Livy server until the job is finished. Depending on the jobs succeeds or fails, the operator retrieves results and posts it on the web UI, or retrieves error information(stack trace, job link, etc.) and handle it according to the error handling mode.
+	
+	Since the part of sending requests is used for several times, so it is described in detail on the right side of the picture. First, we need to construct the request body according to the JSON format. Second, add header(s), e.g. \textbf{Content-Type:application/json} for specifying the content type as JSON, \textbf{X-Requested-By: hdfs} for passing the CSRF protection. Then the URL and the method of the request should be specified so that it could be directed to the correct destination and be executed in the right way. After the request is accepted, a response will come back, it will be unmarshalled to a object with expected class/type, and at last information will be extracted from it properly.
+	
+	\begin{figure}[!h]
+		\centering
+		\includegraphics[width=0.8\textwidth]{flowchart}
+		\caption{Basic Flowchart of Livy Spark Submit}
+	\end{figure}
+	
+	\subsection{Code review and refactoring}
+	
+	Sometimes software could be written by only few people, even just one person alone. However, when a software has a large and complex architect, developers have to cooperate with each other to achieve releases before their deadlines. As the base of SAP's next generation products, SAP Data Hub is large and complex enough, so there are hundreds of developers working on it with full time. Unfortunately, not everyone is experienced, junior developers and interns like me usually write unscalable programs in ugly coding style with many bugs. Therefore, my code updates are always reviewed by a senior developer before they are merged into the new version of SAP Data Hub.
+	
+	Thanks to the tool Git and the website GitHub, code review is much more easier than before. What I need to do is commit my changes, and push those commits to a code repository on SAP's internal GitHub, then a senior developer could see the difference between my version and the old one.
+	
+	If the reviewer thinks those updates are ok, then they will be merged into the master branch of the project and be part of the next possible release, otherwise the reviewer annotates at the problematic lines with their opinions and the changes will not be merged. In the second case, the reviewer will probably ask the person who submits those code to do a code refactoring - correct the code and make new commits again.
+	
+	During the internship I experienced several times of code review, sometimes I could pass without any annotations, sometimes I had to change my implementation again and again. The most impressed one was in September, the reviewer thought my code was too messy and not scalable at all, he made more than 30 annotations and asked for a refactoring. I was really angry and ashamed, but I knew he was right. So I redesigned the flowchart, extracted some common code blocks to helping functions, generalized existing functions so that new features could be easily integrated, etc. After 2 weeks and more than 10 times communication, the new version was finally accepted and merged, both the reviewer and I were very happy, because we shortened the program from 1100 lines to only 800, the code style was much prettier than before, and the most important thing is that adding a new feature costs much less time than before - from 2-3 days to just 2 hours!
 	
 	\subsection{New error handling mode}
 
